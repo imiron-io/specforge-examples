@@ -1,0 +1,17 @@
+[project]
+name = "temperature_sensor"
+version = "0.1.0"
+description = "Specifications for a Simple Temperature Sensor"
+authors = [{ name = "Imiron Developers", email = "info@imiron.io" }]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "jupyterlab>=4.4.5",
+    "pandas>=2.3.1",
+    "matplotlib>=3.10.3",
+    "numpy>=2.3.2",
+    "specforge-sdk",
+]
+
+[tool.uv.sources]
+specforge_sdk = { path = "lib/specforge_sdk-0.5.11-py3-none-any.whl" }

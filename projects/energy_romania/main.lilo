@@ -1,0 +1,65 @@
+system main
+
+signal hour: Int
+signal day: Int
+signal weekday: String
+signal `Consumption`: Int
+signal `Production`: Int
+
+// these signals correspond to production (in MW)
+signal `Nuclear`: Int
+signal `Wind`: Int
+signal `Hydroelectric`: Int
+signal `Oil and Gas`: Int
+signal `Coal`: Int
+signal `Solar`: Int
+signal `Biomass`: Int
+
+// time based specifications
+spec noSolarAtNight = night => Solar == 0
+spec daytimeSolarDominance = !night => eventually [0, 5] (Solar > Wind)
+spec peakDemandPeriod = peakHours => float(Consumption) > 1.2 * avgConsumption
+spec lessConsumptionOnWeekend = weekend => !aboveAvgConsumption
+spec surplusAtNight = night => haveSurplus
+spec frequentlyNight = eventually [0, 12] night
+
+// Variation between dominance of renewable energy sources
+def solarDominant = (Solar > Wind && Solar > Hydroelectric)
+def windDominant = (Wind > Solar && Wind > Hydroelectric)
+spec nighttimeWindDominance = night => eventually [0, 5] (always [0, 2] windDominant)
+spec middaySolarPeak = midday => eventually [0, 5] (always [0, 2] solarDominant)
+spec solarToWindTransition = solarDominant => eventually [0, 8] windDominant
+
+
+// Diverse Mixture of Energy Sources
+def moreRenewable = renewable > nonrenewable
+spec diverseMix = (Nuclear > 0) && (Wind > 0) && (Hydroelectric > 0) && (Solar > 0)
+spec frequentlyMoreRenewable = eventually [0, 12] moreRenewable
+spec renewableAndSurplus = !moreRenewable => !moreRenewable until haveSurplus
+spec renewableDominanceStability = moreRenewable => moreRenewable until !haveSurplus
+
+// Demand Spike Mitigation
+def demandSpike = float(Consumption) > 1.2 * avgConsumption
+spec demandSpikeMitigation = demandSpike => eventually [0, 2] haveSurplus
+
+// Definition of Surplus
+def surplus : Int = Production - Consumption
+def haveSurplus = Production > Consumption
+
+// Different Time Periods
+def night = (hour < 6 || hour > 18)
+def peakHours = (hour >= 10 && hour <= 16)
+def eveningHours = (hour >= 18 && hour <= 22)
+def midday = (hour >= 11 && hour <= 15)
+def weekend = weekday == "Saturday" || weekday == "Sunday"
+
+// different sources of energy
+def renewable =  Wind + Hydroelectric + Solar + Biomass
+def nonrenewable = `Oil and Gas` + Coal + Nuclear
+def lowCarbon = Nuclear + renewable
+
+// different averages, calculated externally
+def avgProduction = 6380.179
+def avgConsumption = 6526.463
+def aboveAvgProduction = float(Production) > avgProduction
+def aboveAvgConsumption = float(Consumption) > avgConsumption

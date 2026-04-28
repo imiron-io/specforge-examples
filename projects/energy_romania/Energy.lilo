@@ -1,0 +1,406 @@
+/// Specifications for the Romanian power grid: production, consumption and the
+/// generation mix, over the hourly time-series data.
+system Energy
+
+// Units, helpers and the threshold record come from the Energy module.
+import Utils as U
+import Utils use { withinReserve, Thresholds, unit MW, unit MWh, unit h }
+
+// ---------------------------------------------------------------------------
+// Signals
+//
+// Generation and load are in megawatts.
+// ---------------------------------------------------------------------------
+
+/// Hour of day, 0-23.
+signal hour: Int
+
+/// Day index within the sample.
+signal day: Int
+
+enum Day = #Monday | #Tuesday | #Wednesday | #Thursday | #Friday | #Saturday | #Sunday
+
+signal weekday: Day
+
+#[label("consumption")]
+#[alias(en = "demand", ja = "需要")]
+/// Total electricity demand on the grid.
+signal Consumption: Float<MW>
+
+#[label("production")]
+#[alias(en = "supply", ja = "供給")]
+/// Total electricity generated on the grid.
+signal Production: Float<MW>
+
+#[label("production")]
+/// Nuclear generation.
+signal Nuclear: Float<MW>
+
+#[label("production", "renewable")]
+/// Wind generation.
+signal Wind: Float<MW>
+
+#[label("production", "renewable")]
+/// Hydroelectric generation.
+signal Hydroelectric: Float<MW>
+
+#[label("production")]
+/// Combined oil and gas generation.
+signal `Oil and Gas`: Float<MW>
+
+#[label("production")]
+/// Coal generation.
+signal Coal: Float<MW>
+
+#[label("production", "renewable")]
+/// Solar generation.
+signal Solar: Float<MW>
+
+#[label("production", "renewable")]
+/// Biomass generation.
+signal Biomass: Float<MW>
+
+// ---------------------------------------------------------------------------
+// Tunable thresholds (overridable per project; defaults shown)
+// ---------------------------------------------------------------------------
+
+/// Smallest production-over-consumption surplus considered healthy.
+#[default = 300.0<MW>]
+param surplusMargin: Float<MW>
+
+/// Multiple of average consumption that counts as a demand peak.
+#[default = 1.2]
+param peakFactor: Float
+
+/// Baseline operating thresholds.
+def baseThresholds: Thresholds =
+  { surplusMargin
+  , peakFactor
+  , baseLoad = 20.0<MW>
+  , reserve.floor = 500.0<MW>
+  , reserve.ceiling = 12000.0<MW>
+  }
+
+/// Stricter winter thresholds, with a higher reserve floor.
+def winterThresholds: Thresholds =
+  { baseThresholds with reserve.floor = 800.0<MW> }
+
+// ---------------------------------------------------------------------------
+// Derived quantities over the signals
+// ---------------------------------------------------------------------------
+
+/// Net surplus of production over consumption.
+def surplus: Float<MW> = Production - Consumption
+/// Whether the grid is currently in surplus.
+def haveSurplus = surplus > 0<MW>
+
+/// Total renewable generation.
+def renewable: Float<MW> = Wind + Hydroelectric + Solar + Biomass
+/// Total fossil generation.
+def nonrenewable: Float<MW> = `Oil and Gas` + Coal + Nuclear
+/// Low-carbon output: nuclear plus renewables.
+def lowCarbon: Float<MW> = Nuclear + renewable
+/// Whether renewables out-produce fossil sources.
+def moreRenewable = renewable > nonrenewable
+/// Whether solar currently dominates the renewable mix.
+def solarDominant = Solar > Wind && Solar > Hydroelectric
+/// Whether wind currently dominates the renewable mix.
+def windDominant = Wind > Solar && Wind > Hydroelectric
+
+/// Long-run average production, precomputed externally.
+def avgProduction: Float<MW> = 6380.179<MW>
+/// Long-run average consumption, precomputed externally.
+def avgConsumption: Float<MW> = 6526.463<MW>
+/// Whether consumption is above its long-run average.
+def aboveAvgConsumption = Consumption > avgConsumption
+
+/// Energy delivered if the current production level held for a full day.
+def dailyEnergy: Float<MWh> = U::energy(Production, 24.0<h>)
+
+// ---------------------------------------------------------------------------
+// Time-of-day predicates
+// ---------------------------------------------------------------------------
+
+/// Night-time hours.
+def night = hour < 6 || hour > 18
+/// Peak demand hours.
+def peakHours = 10 <= hour <= 16
+/// Midday hours.
+def midday = 11 <= hour <= 15
+/// Weekend, by weekday name.
+def weekend = weekday == #Saturday || weekday == #Sunday
+
+/// Fraction of the day elapsed.
+def hourFraction: Float = float(hour) / 24.0
+
+/// Spare capacity below the peak-demand production ceiling.
+def headroom: Float<MW> =
+  let ceiling = peakFactor * avgProduction;
+  ceiling - Production
+
+/// Unmet demand: zero in surplus, otherwise consumption minus production.
+def shortfall: Float<MW> =
+  if haveSurplus then 0<MW> else Consumption - Production
+
+// ---------------------------------------------------------------------------
+// Generation-source classification
+// ---------------------------------------------------------------------------
+
+/// The primary generation sources we distinguish.
+enum Source = #Nuclear | #Wind | #Hydro | #Solar | #Fossil
+
+/// The source currently leading the mix.
+def dominant: Source =
+  if Solar > Wind && Solar > Hydroelectric then #Solar
+  else if Wind > Hydroelectric then #Wind
+  else #Hydro
+
+/// Whether a source is low-carbon.
+def isLowCarbon(s: Source): Bool =
+  match s {
+    #Nuclear -> true;
+    #Wind -> true;
+    #Hydro -> true;
+    #Solar -> true;
+    #Fossil -> false;
+  }
+
+// ---------------------------------------------------------------------------
+// Rolling aggregates and step-to-step changes
+// ---------------------------------------------------------------------------
+
+/// Change in production since the previous sample (zero at the first sample).
+def rampRate: Float<MW> = Production - (previous Production)
+
+/// Highest demand over the next 24 hours.
+def peakDemandAhead: Float<MW> = max_future [0, 24] Consumption
+/// Lowest production over the next 24 hours.
+def troughProductionAhead: Float<MW> = min_future [0, 24] Production
+/// Lowest production over the past 24 hours.
+def troughProductionPast: Float<MW> = min_past [0, 24] Production
+/// Gap between production and consumption.
+def supplyDemandSpread: Float<MW> = max(Production, Consumption) - min(Production, Consumption)
+/// Production at the next sample (the current value at the last sample).
+def nextProduction: Float<MW> = next Production
+
+// ===========================================================================
+// Specifications
+// ===========================================================================
+
+// --- Time-of-day behaviour -------------------------------------------------
+
+#[label("production")]
+/// No solar generation at night.
+spec noSolarAtNight = night => Solar == 0<MW>
+
+#[label("production")]
+/// During the day, solar soon overtakes wind.
+spec daytimeSolarDominance = !night => eventually [0, 5] (Solar > Wind)
+
+#[label("consumption")]
+/// Peak hours run above a multiple of average consumption.
+spec peakDemandPeriod = peakHours => Consumption > peakFactor * avgConsumption
+
+#[label("consumption")]
+/// Weekends stay at or below average consumption.
+spec lessConsumptionOnWeekend = weekend => !aboveAvgConsumption
+
+#[label("safety")]
+/// At night the grid keeps a surplus.
+spec surplusAtNight = night => haveSurplus
+
+/// Night recurs within every twelve-hour window.
+spec frequentlyNight = eventually [0, 12] night
+
+// --- Renewable mix ---------------------------------------------------------
+
+#[label("renewable")]
+/// At night, wind dominance eventually sustains for a couple of hours.
+spec nighttimeWindDominance = night => eventually [0, 5] (always [0, 2] windDominant)
+
+#[label("renewable")]
+/// Around midday, solar dominance eventually sustains for a couple of hours.
+spec middaySolarPeak = midday => eventually [0, 5] (always [0, 2] solarDominant)
+
+#[label("renewable")]
+/// Renewables recur as the majority source within every twelve-hour window.
+spec frequentlyMoreRenewable = eventually [0, 12] moreRenewable
+
+#[label("renewable")]
+/// Once short of renewables, stay that way until a surplus appears.
+spec renewableAndSurplus = !moreRenewable => !moreRenewable until haveSurplus
+
+#[label("renewable")]
+/// A renewable majority lines up with above-average production.
+spec renewableMatchesHighOutput = always (moreRenewable <=> Production > avgProduction)
+
+// --- Thresholds and reserves -----------------------------------------------
+
+#[label("safety")]
+#[field(priority = 1, reviewed = true, owner = "grid-ops")]
+/// Any surplus clears the configured margin.
+spec surplusHealthy = always (haveSurplus => surplus >= baseThresholds.surplusMargin)
+
+#[label("safety")]
+#[field(priority = 2, reviewed = false, owner = "grid-ops")]
+/// Production stays above the winter reserve floor.
+spec reserveFloorMaintained = always (Production >= winterThresholds.reserve.floor)
+
+#[label("safety")]
+/// Production stays within the configured reserve band.
+spec productionWithinReserve = always withinReserve(Production, baseThresholds)
+
+// --- Demand regimes --------------------------------------------------------
+
+#[label("consumption")]
+/// Below average demand a surplus returns soon; at or above it, production keeps pace.
+spec demandRegime = cases {
+  Consumption < avgConsumption -> eventually [0, 6] haveSurplus;
+  Consumption >= avgConsumption -> eventually [0, 6] (Production >= Consumption);
+}
+
+// --- History and short-term dynamics ---------------------------------------
+
+#[label("production")]
+/// The grid has produced power throughout the last three hours.
+spec stableProduction = historically [0, 3] (Production > 0<MW>)
+
+#[label("production")]
+/// It was night at some point in the last six hours.
+spec recentlyNight = eventually [0, 6] past [0, 6] night
+
+#[label("safety")]
+/// A surplus has held since the last nightfall.
+spec surplusSinceNight = haveSurplus since night
+
+#[label("safety")]
+/// Production keeps running until a surplus takes over.
+spec productionReleases = haveSurplus releases (Production > 0<MW>)
+
+#[label("production")]
+/// While producing, the grid is still producing at the next step.
+spec keepsProducing = always (Production > 0<MW> => next (Production > 0<MW>))
+
+#[label("safety")]
+/// The hour-to-hour production ramp stays within a slew limit.
+spec rampLimited = always (abs(rampRate) <= 3000.0<MW>)
+
+#[label("safety")]
+/// Peak production over any 6-hour window stays under the reserve ceiling.
+spec rollingPeakBounded = always ((max_past [0, 6] Production) <= baseThresholds.reserve.ceiling)
+
+// --- Day boundaries --------------------------------------------------------
+
+#[label("consumption")]
+/// A weekday boundary occurs within every 48-hour window.
+spec weekdayBoundaryAhead = eventually [0, 48] will_change weekday
+
+// --- Trace start -----------------------------------------------------------
+
+#[label("production")]
+/// The grid is already producing at the start of the trace.
+spec earlyProduction = time < 100.0 => Production > 0<MW>
+
+// --- Capacity and forecasts ------------------------------------------------
+
+#[label("renewable")]
+/// Low-carbon output eventually overtakes fossil output.
+spec lowCarbonMajority = eventually [0, 24] (lowCarbon > nonrenewable)
+
+#[label("production")]
+/// A full day at the current production level clears the baseload energy need.
+spec dailyEnergyMeetsBaseload = always (dailyEnergy > U::energy(baseThresholds.baseLoad, 24.0<h>))
+
+#[label("consumption")]
+/// By midday, more than 40% of the day has elapsed.
+spec middayPastMorning = midday => hourFraction > 0.4
+
+#[label("production")]
+/// There is spare production headroom during peak hours.
+spec peakHeadroom = peakHours => headroom > 0<MW>
+
+#[label("safety")]
+/// Any shortfall is made good within six hours.
+spec shortfallRecovers = always (shortfall > 0<MW> => eventually [0, 6] haveSurplus)
+
+#[label("consumption")]
+/// Peak demand over the next 24 hours stays under the reserve ceiling.
+spec peakDemandAheadBounded = always (peakDemandAhead <= baseThresholds.reserve.ceiling)
+
+#[label("production")]
+/// The 24-hour production low never drops below zero.
+spec troughStaysPositive = always (troughProductionPast >= 0<MW>)
+
+#[label("safety")]
+/// The gap between supply and demand stays bounded.
+spec spreadBounded = always (supplyDemandSpread <= 6000.0<MW>)
+
+#[label("production")]
+/// Production never stops abruptly: the next sample is still positive.
+spec noSuddenStop = always (nextProduction > 0<MW>)
+
+#[label("production")]
+/// Production stays positive across the next 24 hours.
+spec futureTroughPositive = always (troughProductionAhead >= 0<MW>)
+
+#[label("consumption")]
+/// When the weekday changes, there is still demand on the grid.
+spec demandPersistsAcrossDays = always (did_change weekday => Consumption > 0<MW>)
+
+#[label("production")]
+/// Solar output stays between zero and total production at all times.
+spec solarWithinProduction = always [0, infinity] (0<MW> <= Solar <= Production)
+
+// --- Source transitions ----------------------------------------------------
+
+#[label("renewable")]
+#[timeout = 10.0]
+/// Whenever solar leads the mix, wind takes over within eight hours.
+spec solarToWindTransition = solarDominant => eventually [0, 8] windDominant
+
+// --- Renewable presence ----------------------------------------------------
+
+#[label("renewable")]
+/// Renewables are present. Implied by `diverseMix`, but kept as a standalone check.
+#[disable(redundancy)]
+spec renewablePresent = renewable > 0<MW>
+
+#[label("renewable")]
+/// A diverse low-carbon mix: every clean source is contributing.
+spec diverseMix = (Nuclear > 0<MW>) && (Wind > 0<MW>) && (Hydroelectric > 0<MW>) && (Solar > 0<MW>)
+
+// --- Dominant source -------------------------------------------------------
+
+#[label("renewable")]
+/// The leading source is, often enough, a low-carbon one.
+spec lowCarbonDominance = eventually [0, 24] isLowCarbon(dominant)
+
+// --- Not yet formalised ----------------------------------------------------
+
+/// Frequency must stay within the European 50 Hz tolerance band. Not yet formalised.
+spec frequencyWithinBand
+
+// ---------------------------------------------------------------------------
+// Assumptions about the data
+// ---------------------------------------------------------------------------
+
+/// Production is never negative.
+assumption productionNonNegative = Production >= 0<MW>
+
+/// Renewable output cannot exceed total production.
+assumption renewableBounded = renewable <= Production
+
+/// Consumption is positive.
+#[rigidity = "soft"]
+assumption consumptionPositive = Consumption > 0<MW>
+
+/// Grid frequency stays stable. Not yet formalised.
+assumption gridFrequencyStable
+
+// ---------------------------------------------------------------------------
+// An unused helper, kept with its diagnostic silenced
+// ---------------------------------------------------------------------------
+
+#[disable(unused)]
+/// Square root of the renewable share of production.
+def renewableShareRoot: Float = sqrt(renewable / Production)

@@ -1,0 +1,30 @@
+// Temperature Monitoring specifications
+// This spec defines safety requirements for a temperature sensor system
+
+import util use { in_bounds }
+
+signal temperature: Float
+signal humidity: Float
+
+param min_temperature: Float
+param max_temperature: Float
+
+#[disable(redundancy)]
+spec temperature_in_bounds = in_bounds(temperature, min_temperature, max_temperature)
+
+spec always_in_bounds = always temperature_in_bounds
+
+// Humidity should be reasonable when temperature is in normal range
+spec humidity_correlation = always (
+  (temperature >= 15.0 && temperature <= 35.0) => 
+  (humidity >= 20.0 && humidity <= 80.0)
+)
+
+// Emergency condition - temperature exceeds critical thresholds
+spec emergency_condition = temperature < 5.0 || temperature > 45.0
+
+// Recovery specification - after emergency, system should stabilize
+spec recovery_spec = always (
+  emergency_condition => 
+  eventually[0, 10] (temperature >= 15.0 && temperature <= 35.0)
+)

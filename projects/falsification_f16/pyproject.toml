@@ -1,0 +1,19 @@
+[project]
+name = "falsification-f16"
+version = "0.1.0"
+description = "Falsification Examples using SpecForge SDK and Psy-Taliro"
+readme = "README.md"
+requires-python = "==3.12.*"
+dependencies = [
+    "aerobench",
+    "jupyter>=1.1.1",
+    "numpy>=1.26.4",
+    "pandas>=2.3.3",
+    "plotly>=6.3.1",
+    "psy-taliro>=1.0.0",
+    "specforge-sdk",
+]
+
+[tool.uv.sources]
+specforge_sdk = { path = "lib/specforge_sdk-0.5.11-py3-none-any.whl" }
+aerobench = { git = "https://github.com/cpslab-asu/aerobenchvvpython.git" }

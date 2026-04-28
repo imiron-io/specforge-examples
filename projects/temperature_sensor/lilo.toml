@@ -1,0 +1,6 @@
+name = "temperature_sensor"
+
+[[system_falsifier]]
+name = "Dummy Falsifier"
+system = "temperature_sensor"
+script = "falsifiers/dummy.py"

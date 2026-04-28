@@ -1,0 +1,5 @@
+module util
+
+// Basic temperature bounds - temperature should stay within safe range
+pub def in_bounds(x: Float, lower: Float, upper: Float) =
+  lower <= x <= upper

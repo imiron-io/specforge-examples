@@ -1,0 +1,25 @@
+/// Shared units, pure helpers and config types for the Romanian grid model.
+module Utils
+
+/// MegaWatts (Instantaneous electrical power)
+unit MW
+/// MegaWatt-hours (Electrical energy: power integrated over time)
+unit MWh
+/// A duration measured in hours.
+unit h
+
+/// Energy delivered by holding `power` for `duration`.
+pub def energy(power: Float<MW>, duration: Float<h>): Float<MWh> =
+  (power * duration) * 1 <MWh/(MW*h)>
+
+/// Operating thresholds for the grid.
+pub type Thresholds = {
+  surplusMargin: Float<MW>,
+  peakFactor: Float,
+  baseLoad: Float<MW>,
+  reserve: { floor: Float<MW>, ceiling: Float<MW> }
+}
+
+/// Whether a power level sits within the configured reserve band.
+pub def withinReserve(power: Float<MW>, t: Thresholds): Bool =
+  t.reserve.floor <= power <= t.reserve.ceiling
