@@ -1,0 +1,7 @@
+name = "falsification_f16"
+source = "spec"
+
+[[system_falsifier]]
+name = "F16 Falsifier"
+system = "f16"
+script = "scripts/f16.sh"

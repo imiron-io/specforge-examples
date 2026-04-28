@@ -1,0 +1,4 @@
+[project]
+name = "Energy Production and Consumption"
+source = "."
+description = "An example project exploring patterns of production and consumption in the Romanian Power Grid"

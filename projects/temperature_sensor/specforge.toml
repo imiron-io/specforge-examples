@@ -1,0 +1,8 @@
+[project]
+name = "temperature_sensor"
+source = "."
+
+[[system_falsifier]]
+name = "Dummy Falsifier"
+system = "temperature_sensor"
+script = "falsifiers/dummy.py"

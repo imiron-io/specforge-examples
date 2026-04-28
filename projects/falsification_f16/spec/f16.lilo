@@ -1,0 +1,18 @@
+system f16
+
+/// False stands for standby
+#[disable(unused)]
+signal mode : Bool
+
+#[disable(unused)]
+signal roll : Float
+
+#[disable(unused)]
+signal pitch : Float
+
+#[disable(unused)]
+signal yaw : Float
+
+signal alt : Float
+
+spec afloat = always (alt > 10)

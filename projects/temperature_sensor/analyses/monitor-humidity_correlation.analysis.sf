@@ -1,0 +1,36 @@
+{
+  "tag": "CmdMonitor",
+  "contents": {
+    "spec": {
+      "system": "temperature_sensor",
+      "name": "humidity_correlation"
+    },
+    "signal": {
+      "signal": {
+        "tag": "SignalFile",
+        "contents": {
+          "filepath": "sensor_data.csv"
+        }
+      },
+      "encoding": {
+        "tag": "Nested"
+      }
+    },
+    "params": {
+      "encoding": {
+        "tag": "Nested"
+      },
+      "params": {
+        "tag": "ParamJson",
+        "contents": {}
+      }
+    },
+    "options": {
+      "verdicts": true,
+      "robustness": false,
+      "tree": true,
+      "downsample": true,
+      "threshold": 3100
+    }
+  }
+}

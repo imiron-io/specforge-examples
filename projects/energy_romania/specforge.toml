@@ -1,0 +1,19 @@
+[project]
+name = "Energy Production and Consumption"
+source = "."
+description = "An example project exploring patterns of production and consumption in the Romanian Power Grid"
+
+# Colours for the label groups used throughout Energy.lilo. These show up in the
+# VS Code outline and sidebar.
+[labels.colors]
+'production' = "steelblue"
+'consumption' = "darkorange"
+'renewable' = "seagreen"
+'safety' = "crimson"
+
+# A governance rule: any spec a reviewer has signed off (`reviewed:true`) must
+# also name an accountable owner. `specforge validate` checks that the
+# antecedent query's results are contained in the consequent query's results.
+[[validation_rules]]
+antecedent = "reviewed:true"
+consequent = 'owner:"grid-ops"'

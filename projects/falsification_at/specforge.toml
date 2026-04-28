@@ -1,0 +1,9 @@
+[project]
+name = "falsification_at"
+source = "spec"
+
+
+[[system_falsifier]]
+name = "Automatic Transmission Falsifier"
+system = "automatic_transmission"
+script = "scripts/automatic_transmission.sh"
